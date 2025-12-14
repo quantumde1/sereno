@@ -9,8 +9,8 @@ import raylib;
 import std.string;
 import scripts.sc3_r11.lzss;
 
-private size_t currentPosition = 0;
-private size_t textOffsetPosition = 0;
+size_t currentPosition = 0;
+size_t textOffsetPosition = 0;
 
 enum OpCodes : byte {
     NOP = 0x00,
@@ -48,6 +48,19 @@ ubyte[] readCompressedBytesFromFile(string filename) {
     return dest;
 }
 
+/*
+        bgm_set = 0x37,
+        bgm_req = 0x39,
+        bgm_wait = 0x3A,
+        se_set = 0x3D,
+        se_req = 0x3F,
+        se_wait = 0x40,
+*/
+
+string getAdxFilename(int bgmId) {
+    return format!"%03d_BGM%02d.ADX.ogg"(bgmId, bgmId - 1);
+}
+
 int scriptParser(ubyte[] bytes) {
     if (pauseParser == true) return 2;
     if (currentPosition > bytes.length) return 1;
@@ -55,22 +68,78 @@ int scriptParser(ubyte[] bytes) {
     byte opcode = bytes[currentPosition];
     debugWriteln("current opcode: ", opcode);
     switch (opcode) {
+        case 0x37:
+            messageGlobal ~= "";
+            messageGlobal[0] = "bgm_set";
+            PlayMusicStream(music);
+            showDialog = true;
+            pauseParser = true;
+            currentPosition++;
+            break;
+        case 0x39:
+            messageGlobal ~= "";
+            messageGlobal[0] = "bgm_req";
+            showDialog = true;
+            pauseParser = true;
+            currentPosition++;
+            break;
+        case 0x3A:
+            messageGlobal ~= "";
+            messageGlobal[0] = "bgm_wait";
+            showDialog = true;
+            pauseParser = true;
+            currentPosition++;
+            break;
+        case 0x3D:
+            messageGlobal ~= "";
+            messageGlobal[0] = "se_set";
+            showDialog = true;
+            pauseParser = true;
+            currentPosition++;
+            break;
+        case 0x40:
+            messageGlobal ~= "";
+            messageGlobal[0] = "se_req";
+            showDialog = true;
+            pauseParser = true;
+            currentPosition++;
+            break;
+        case 0x3F:
+            messageGlobal ~= "";
+            messageGlobal[0] = "se_wait";
+            showDialog = true;
+            pauseParser = true;
+            currentPosition++;
+            break;
+        case 0x38:
+            StopMusicStream(music);
+            messageGlobal ~= "";
+            messageGlobal[0] = "bgm_del";
+            showDialog = true;
+            pauseParser = true;
+            currentPosition+=2;
+            break;
         case OpCodes.NOP:
             debugWriteln("NOP, currentPosition: ", currentPosition);
             currentPosition++;
             //pauseParser = true;
             break;
         case OpCodes.FILE_READ:
-            debugWriteln("FILE_READ op");
-            currentPosition+=2;
-            ushort value = readUInt16(bytes, currentPosition + 2);
-            FileType fType = cast(FileType)(value >> 12);
-            ushort fNum = cast(ushort)(value & 0x0FFF);
-            debugWriteln(fType);
+            debugWriteln("FILE_READ command");
+            byte lowByte = bytes[currentPosition + 2];
+            byte highByte = bytes[currentPosition + 3];
+            ushort value = cast(ushort)((highByte << 8) | lowByte);
+            int typeValue = value >> 12;
+            int fileNumber = value & 0x0FFF;
+            if (typeValue == FileType.BGM) {
+                string path = getAdxFilename(fileNumber);
+                music = LoadMusicStream(("res/bgmpc-en/"~path).toStringz());
+            }
             messageGlobal ~= "";
-            messageGlobal[0] = "FILE_READ, fnum: "~fNum.to!string~", fType: "~fType.to!string;
+            messageGlobal[0] = "file_read file type: "~typeValue.to!string~" fileNumber: "~fileNumber.to!string;
             showDialog = true;
             pauseParser = true;
+            currentPosition += 4;
             break;
         case OpCodes.DIALOGBOX:
             string text;
