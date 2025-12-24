@@ -28,12 +28,12 @@ Next, run
 
 ## Features
 
-now engine supports only text drawing from Remember11 BIP format.
+now engine supports only text drawing and sometimes playing BGM from Remember11 BIP(sc3 compressed in LZSS) format.
 
 ## License
 
 raylib([raylib.com](https://raylib.com)) uses zlib/libpng license
 
-sereno/himmel engine uses MIT license
+sereno uses CDDL license
 
-VLC([videolan.org](https://videolan.org)) uses LGPL license
+libVLC([libVLC github](https://github.com/videolan/vlc)) uses LGPL license, dynamically linked with sereno

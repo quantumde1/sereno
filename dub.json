@@ -38,6 +38,6 @@
 		"raylib",
 		"vlc"
 	],
-	"license": "MIT License",
+	"license": "CDDL License",
 	"name": "himmel-engine"
 }

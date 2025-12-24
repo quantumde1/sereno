@@ -1,4 +1,24 @@
-// quantumde1 developed software, licensed under MIT license.
+/*CDDL HEADER START
+
+The contents of this file are subject to the terms of the
+Common Development and Distribution License (the "License").
+You may not use this file except in compliance with the License.
+
+You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+or http://www.opensolaris.org/os/licensing.
+See the License for the specific language governing permissions
+and limitations under the License.
+
+When distributing Covered Code, include this CDDL HEADER in each
+file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+If applicable, add the following below this CDDL HEADER, with the
+fields enclosed by brackets "[]" replaced with your own identifying
+information: Portions Copyright [yyyy] [name of copyright owner]
+
+CDDL HEADER END
+
+Copyright (c) 2025 quantumde1 
+*/
 module graphics.playback;
 
 import std.stdio;
@@ -6,93 +26,46 @@ import raylib;
 import raylib.rlgl;
 import core.stdc.stdlib;
 import core.stdc.string;
-import core.thread;
 import variables;
 import core.sync.mutex;
-import std.file;
-import std.string;
 import system.abstraction;
+import std.string;
 
 extern (C)
 {
     struct libvlc_instance_t;
     struct libvlc_media_t;
     struct libvlc_media_player_t;
-    struct libvlc_event_manager_t;
     struct libvlc_event_t;
-    long libvlc_media_player_get_length(libvlc_media_player_t* player);
-    long libvlc_media_player_get_time(libvlc_media_player_t* player);
-    void libvlc_media_player_set_time(libvlc_media_player_t* player, long time);
+    
     libvlc_instance_t* libvlc_new(int argc, const(char)** argv);
     void libvlc_release(libvlc_instance_t* instance);
-
-    libvlc_media_t* libvlc_media_new_location(libvlc_instance_t* instance, const(char)* mrl);
+    
+    libvlc_media_t* libvlc_media_new_path(libvlc_instance_t* instance, const(char)* path);
     void libvlc_media_release(libvlc_media_t* media);
-
+    
     libvlc_media_player_t* libvlc_media_player_new_from_media(libvlc_media_t* media);
     void libvlc_media_player_release(libvlc_media_player_t* player);
     void libvlc_media_player_play(libvlc_media_player_t* player);
     void libvlc_media_player_stop(libvlc_media_player_t* player);
     int libvlc_media_player_get_state(libvlc_media_player_t* player);
-
+    
     void libvlc_video_set_callbacks(libvlc_media_player_t* player,
         void* function(void*, void**),
         void function(void*, void*, void*),
         void* function(void*),
         void* opaque);
-
+    
     void libvlc_video_set_format(libvlc_media_player_t* player,
         const(char)* chroma,
         uint width,
         uint height,
         uint pitch);
-
+    
     void libvlc_video_get_size(libvlc_media_player_t* player,
         uint num,
         uint* px,
         uint* py);
-
-    libvlc_event_manager_t* libvlc_media_player_event_manager(libvlc_media_player_t* player);
-    void libvlc_event_attach(libvlc_event_manager_t* event_manager,
-        int event_type,
-        void function(const(libvlc_event_t)*, void*),
-        void* user_data);
-    int libvlc_event_detach(libvlc_event_manager_t* event_manager,
-        int event_type,
-        void function(const(libvlc_event_t)*, void*),
-        void* user_data);
-}
-
-enum libvlc_state_t
-{
-    libvlc_NothingSpecial = 0,
-    libvlc_Opening,
-    libvlc_Buffering,
-    libvlc_Playing,
-    libvlc_Paused,
-    libvlc_Stopped,
-    libvlc_Ended,
-    libvlc_Error
-}
-
-enum libvlc_event_type_t
-{
-    libvlc_MediaPlayerEndReached = 256
-}
-
-extern (C) void endReachedCallback(const(libvlc_event_t)* event, void* user_data)
-{
-    auto callback = cast(void function(void*)) user_data;
-    callback(user_data);
-}
-
-extern (C) void libvlc_media_player_set_media_player_end_reached_callback(
-    libvlc_media_player_t* player,
-    void function(void*), void* user_data)
-{
-    auto event_manager = libvlc_media_player_event_manager(player);
-    libvlc_event_attach(event_manager, libvlc_event_type_t.libvlc_MediaPlayerEndReached, &endReachedCallback,
-        cast(void*) user_data);
 }
 
 struct Video
@@ -121,230 +94,147 @@ extern (C) void end_vlc_rendering(void* data, void* id, void* p_pixels)
     video.mutex.unlock();
 }
 
-extern (C) void videoEndCallback(void* data)
+Video* createVideo(libvlc_instance_t* libvlc, const(char)* filepath)
 {
-    videoFinished = true;
-    debug debugWriteln("Video ended");
-}
-
-Video* add_new_video(libvlc_instance_t* libvlc, const(char)* src, const(char)* protocol)
-{
-    auto video = cast(Video*) malloc(Video.sizeof);
-    if (video is null)
-    {
-        debug debugWriteln("Failed to allocate memory for video.");
-        return null;
-    }
-
+    auto video = new Video;
     video.mutex = new Mutex;
-    auto location = cast(char*) malloc(strlen(protocol) + strlen(src) + 3);
-    if (location is null)
-    {
-        debug debugWriteln("Failed to allocate memory for location.");
-        free(video);
-        return null;
-    }
-
-    sprintf(location, "%s://%s", protocol, src);
-    auto media = libvlc_media_new_location(libvlc, location);
-    free(location);
-
+    
+    auto media = libvlc_media_new_path(libvlc, filepath);
     if (media is null)
     {
         debug debugWriteln("Failed to create media.");
         free(video);
         return null;
     }
-
+    
     video.player = libvlc_media_player_new_from_media(media);
     libvlc_media_release(media);
-
+    
     if (video.player is null)
     {
         debug debugWriteln("Failed to create media player.");
         free(video);
         return null;
     }
-
+    
     video.needUpdate = false;
     video.texW = 0;
     video.texH = 0;
     video.buffer = null;
     video.texture.id = 0;
-
+    
     libvlc_video_set_callbacks(video.player, &begin_vlc_rendering, &end_vlc_rendering, null, video);
-    libvlc_media_player_set_media_player_end_reached_callback(video.player, &videoEndCallback, video);
-
+    
     return video;
 }
 
-void cleanup_video(Video* video)
+void destroyVideo(Video* video)
 {
     if (video is null)
         return;
-
+    
     libvlc_media_player_stop(video.player);
     libvlc_media_player_release(video.player);
+    
     if (video.texture.id != 0)
     {
         UnloadTexture(video.texture);
     }
-    video.mutex.destroy();
+    
     if (video.buffer !is null)
     {
         MemFree(video.buffer);
     }
+    
+    video.mutex.destroy();
     free(video);
 }
 
-extern (C) void playVideoInternal(immutable char* argv)
+void playVideo(string filename)
 {
-    const(char)*[] vlcArgs;
-    debug
-    {
-        vlcArgs = [
-            "--verbose=1", "--no-xlib", "--drop-late-frames", "--live-caching=0",
-            "--no-lua"
-        ];
-    }
-    else
-    {
-        vlcArgs = [
-            "--verbose=-1", "--no-xlib", "--drop-late-frames", "--live-caching=0",
-            "--no-lua"
-        ];
-    }
+    const(char)*[] vlcArgs = ["--no-xlib", "--drop-late-frames"];
     auto libvlc = libvlc_new(cast(int) vlcArgs.length, cast(const(char)**) vlcArgs.ptr);
+    
     if (libvlc is null)
     {
-        debug debugWriteln("Something went wrong with libvlc init. Turn on DEBUG in conf/build_type.conf at BUILD_TYPE field to get more logs.");
-        videoFinished = true;
+        debug debugWriteln("Failed to initialize libvlc.");
         return;
     }
-
-    Video*[] video_list;
-    auto new_video = add_new_video(libvlc, argv, "file");
-    if (new_video is null)
+    
+    auto video = createVideo(libvlc, toStringz(filename));
+    if (video is null)
     {
         libvlc_release(libvlc);
         return;
     }
-
-    video_list ~= new_video;
-    libvlc_media_player_play(new_video.player);
-    debug debugWriteln("Video started playing");
+    
+    libvlc_media_player_play(video.player);
+    
     while (!WindowShouldClose())
     {
-        auto player = new_video.player;
-
-        if (libvlc_media_player_get_state(player) == libvlc_state_t.libvlc_Ended)
+        if (video.buffer is null && libvlc_media_player_get_state(video.player) == 4) // Playing
         {
-            debug debugWriteln("Video reached end.");
-            videoFinished = true;
-        }
-
-        if (videoFinished)
-        {
-            break;
-        }
-
-
-        BeginDrawing();
-        ClearBackground(Colors.BLACK);
-        UpdateMusicStream(music);
-        foreach (video; video_list)
-        {
-            if (video.buffer is null)
+            libvlc_video_get_size(video.player, 0, &video.texW, &video.texH);
+            
+            if (video.texW > 0 && video.texH > 0)
             {
-                if (libvlc_media_player_get_state(video.player) == libvlc_state_t.libvlc_Playing)
+                float screenWidth = cast(float) GetScreenWidth();
+                float screenHeight = cast(float) GetScreenHeight();
+                float videoAspectRatio = cast(float) video.texW / cast(float) video.texH;
+                float screenAspectRatio = screenWidth / screenHeight;
+                
+                video.scale = (videoAspectRatio < screenAspectRatio) 
+                    ? (screenHeight / cast(float) video.texH) 
+                    : (screenWidth / cast(float) video.texW);
+                
+                if (video.texture.id == 0)
                 {
-                    libvlc_video_get_size(video.player, 0, &video.texW, &video.texH);
-
-                    if (video.texW > 0 && video.texH > 0)
-                    {
-                        float screenWidth = cast(float) GetScreenWidth();
-                        float screenHeight = cast(float) GetScreenHeight();
-                        float videoAspectRatio = cast(float) video.texW / cast(float) video.texH;
-                        float screenAspectRatio = screenWidth / screenHeight;
-
-                        // Calculate scale based on aspect ratio
-                        video.scale = (videoAspectRatio < screenAspectRatio) ?
-                            (screenHeight / cast(float) video.texH) : (
-                                screenWidth / cast(float) video.texW);
-
-                        // Set video format only once
-                        if (video.texture.id == 0)
-                        {
-                            libvlc_video_set_format(video.player, "RV24", video.texW, video.texH, video.texW * 3);
-                            video.mutex.lock();
-
-                            // Load the texture and assign the ID to the texture struct
-                            video.texture.id = rlLoadTexture(null, video.texW, video.texH, PixelFormat
-                                    .PIXELFORMAT_UNCOMPRESSED_R8G8B8, 1);
-                            video.texture.width = video.texW;
-                            video.texture.height = video.texH;
-                            video.texture.format = PixelFormat.PIXELFORMAT_UNCOMPRESSED_R8G8B8;
-                            video.texture.mipmaps = 1;
-
-                            // Allocate buffer for video frame
-                            video.buffer = cast(ubyte*) MemAlloc(video.texW * video.texH * 3);
-                            video.needUpdate = false;
-                            video.mutex.unlock();
-                            debug debugWriteln("Video texture initialized");
-                        }
-                    }
-                }
-            }
-            else
-            {
-                if (video.needUpdate)
-                {
+                    libvlc_video_set_format(video.player, "RV24", video.texW, video.texH, video.texW * 3);
                     video.mutex.lock();
-                    UpdateTexture(video.texture, video.buffer);
+                    
+                    video.texture.id = rlLoadTexture(null, video.texW, video.texH, 
+                        PixelFormat.PIXELFORMAT_UNCOMPRESSED_R8G8B8, 1);
+                    video.texture.width = video.texW;
+                    video.texture.height = video.texH;
+                    video.texture.format = PixelFormat.PIXELFORMAT_UNCOMPRESSED_R8G8B8;
+                    video.texture.mipmaps = 1;
+                    
+                    video.buffer = cast(ubyte*) MemAlloc(video.texW * video.texH * 3);
                     video.needUpdate = false;
                     video.mutex.unlock();
                 }
-
-                Vector2 position = {
-                    (GetScreenWidth() - video.texW * video.scale) * 0.5f, (
-                        GetScreenHeight() - video.texH * video.scale) * 0.5f
-                };
-                SetTextureFilter(video.texture, TextureFilter.TEXTURE_FILTER_BILINEAR);
-                DrawTextureEx(video.texture, position, 0, video.scale, Colors.WHITE);
             }
         }
-
+        else if (video.buffer !is null)
+        {
+            if (video.needUpdate)
+            {
+                video.mutex.lock();
+                UpdateTexture(video.texture, video.buffer);
+                video.needUpdate = false;
+                video.mutex.unlock();
+            }
+            
+            BeginDrawing();
+            ClearBackground(Colors.BLACK);
+            
+            Vector2 position = {
+                (GetScreenWidth() - video.texW * video.scale) * 0.5f, 
+                (GetScreenHeight() - video.texH * video.scale) * 0.5f
+            };
+            
+            SetTextureFilter(video.texture, TextureFilter.TEXTURE_FILTER_BILINEAR);
+            DrawTextureEx(video.texture, position, 0, video.scale, Colors.WHITE);
+            
+            EndDrawing();
+        }
         
         if (IsKeyPressed(KeyboardKey.KEY_ENTER) || IsMouseButtonPressed(MouseButton.MOUSE_BUTTON_LEFT))
         {
-            foreach (video; video_list)
-            {
-                cleanup_video(video);
-            }
-
-            videoFinished = true;
-            video_list.length = 0;
-            EndDrawing();
-            libvlc_release(libvlc);
-            return;
+            break;
         }
-
-        EndDrawing();
     }
-
-    foreach (video; video_list)
-    {
-        cleanup_video(video);
-    }
-    videoFinished = true;
-    video_list.length = 0;
+    
+    destroyVideo(video);
     libvlc_release(libvlc);
-    return;
-}
-
-void playVideo(string filename) {
-    version (Posix)
-        playVideoInternal(toStringz(getcwd() ~ "/" ~ filename));
-    version (Windows)
-        playVideoInternal(toStringz("/" ~ getcwd() ~ "/" ~ filename));
 }
