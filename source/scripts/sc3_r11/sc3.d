@@ -12,14 +12,6 @@ import scripts.sc3_r11.lzss;
 size_t currentPosition = 0;
 size_t textOffsetPosition = 0;
 
-enum OpCodes : byte {
-    NOP = 0x00,
-    END = cast(byte)0x01,
-    DIALOGBOX = 0x73,
-    FILE_READ = 0x0F,
-    SE_SET = 0x3D,
-}
-
 enum FileType {
     MAC,
     BG,
@@ -27,6 +19,14 @@ enum FileType {
     CHR,
     BGM,
     SE
+}
+
+enum OpCodes : byte {
+    NOP = 0x00,
+    END = cast(byte)0x01,
+    DIALOGBOX = 0x73,
+    FILE_READ = 0x0F,
+    SE_SET = 0x3D,
 }
 
 ushort readUInt16(ref ubyte[] bytes, size_t offset) {
@@ -126,9 +126,7 @@ int scriptParser(ubyte[] bytes) {
             break;
         case OpCodes.FILE_READ:
             debugWriteln("FILE_READ command");
-            byte lowByte = bytes[currentPosition + 2];
-            byte highByte = bytes[currentPosition + 3];
-            ushort value = cast(ushort)((highByte << 8) | lowByte);
+            ushort value = readUInt16(bytes, currentPosition+2);
             int typeValue = value >> 12;
             int fileNumber = value & 0x0FFF;
             if (typeValue == FileType.BGM) {
